@@ -1,17 +1,31 @@
+// Copyright Amazon.com Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"). You may
+// not use this file except in compliance with the License. A copy of the
+// License is located at
+//
+//     http://aws.amazon.com/apache2.0/
+//
+// or in the "license" file accompanying this file. This file is distributed
+// on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+// express or implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package cri
 
 import (
 	"context"
 	"errors"
+	"os"
 
+	"github.com/aws/amazon-vpc-cni-k8s/pkg/utils/logger"
 	"google.golang.org/grpc"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
-
-	log "github.com/cihub/seelog"
 )
 
 const (
-	criSocketPath = "unix:///var/run/cri.sock"
+	criSocketPath    = "unix:///var/run/cri.sock"
+	dockerSocketPath = "unix:///var/run/dockershim.sock"
 )
 
 // SandboxInfo provides container information
@@ -23,7 +37,7 @@ type SandboxInfo struct {
 }
 
 type APIs interface {
-	GetRunningPodSandboxes() (map[string]*SandboxInfo, error)
+	GetRunningPodSandboxes(log logger.Logger) (map[string]*SandboxInfo, error)
 }
 
 type Client struct{}
@@ -32,8 +46,14 @@ func New() *Client {
 	return &Client{}
 }
 
-func (c *Client) GetRunningPodSandboxes() (map[string]*SandboxInfo, error) {
-	conn, err := grpc.Dial(criSocketPath, grpc.WithInsecure())
+//GetRunningPodSandboxes get running sandboxIDs
+func (c *Client) GetRunningPodSandboxes(log logger.Logger) (map[string]*SandboxInfo, error) {
+	socketPath := dockerSocketPath
+	if info, err := os.Stat("/var/run/cri.sock"); err == nil && !info.IsDir() {
+		socketPath = criSocketPath
+	}
+	log.Debugf("Getting running pod sandboxes from %q", socketPath)
+	conn, err := grpc.Dial(socketPath, grpc.WithInsecure(), grpc.WithNoProxy(), grpc.WithBlock())
 	if err != nil {
 		return nil, err
 	}
